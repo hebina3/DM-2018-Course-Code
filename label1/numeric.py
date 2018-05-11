@@ -7,7 +7,7 @@ import math
 float_formatter = lambda x: "%.3f" % x  # creating float formatter to use when showing float data
 np.set_printoptions(formatter={'float_kind': float_formatter})  # setting up the formatter we created
 
-data = np.loadtxt("magic_04.txt", delimiter=",", usecols=(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)) # getting data from .txt and creating matrix
+data = np.loadtxt("magic04.txt", delimiter=",", usecols=(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)) # getting data from .txt and creating matrix
 print("OUr data------------------------\n",data)
 
 col_number = np.size(data, axis=1)  # finding column number of dataset matrix

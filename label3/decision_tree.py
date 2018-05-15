@@ -1,114 +1,93 @@
-#-*-coding:utf-8-*-
-import numpy as np
-import pandas as pd
 import math
-
-#计算某一属性里面的能取得最大Gain的对应的split_point，以及其gain
-def evaluate_numeric_attribute(D,attribute,sigma):
-    featureList = [instance[attribute] for instance in D]
-    uniqueVals = set(featureList)
-    uniqueVals=sorted(list(uniqueVals))
-    split_point=0.0
-    BestGain=0.0
-    for i in range(len(uniqueVals)-1):
-        v=(uniqueVals[i]+uniqueVals[i+1])/2.0
-        DY,DN=splitPointDataset(D,attribute,v)
-        if len(DY)<=sigma or len(DN)<=sigma:
-            continue
-        baseEnt = calEnt(D)
-        Gain=baseEnt-float(len(DY))/len(D)*calEnt((DY))-float(len(DN))/len(D)*calEnt(DN)
-        if Gain>BestGain:
-            BestGain=Gain
-            split_point=v
-    return split_point,BestGain
-
-#计算数据的类别属性里面比例最大的类别的label以及其纯度
-def majorityLabel_purity(classList):
-    if len(classList)==0:
-        return None,0.0,0
+import operator
+import matplotlib.pyplot as plt
+from collections import Counter
+#计算香农熵
+def calcShannonEnt(dataSet):
+    numEntries = len(dataSet)
+    labelCounts = {}
+    for featVec in dataSet: # 遍历每个实例，统计标签的频数
+        currentLabel = featVec[-1]
+        if currentLabel not in labelCounts.keys(): 
+            labelCounts[currentLabel] = 0
+        labelCounts[currentLabel] += 1
+    shannonEnt = 0.0
+    for key in labelCounts:
+        prob = float(labelCounts[key]) / numEntries
+        shannonEnt -= prob * math.log(prob,2) # 以2为底的对数
+    return shannonEnt
+# 按照给定特征划分数据集
+def splitDataSet(dataSet, axis, value):
+    retDataSet = []
+    for featVec in dataSet:
+        if featVec[axis] == value:
+            reducedFeatVec = featVec[:axis]     #剔除已经遍历的分支
+            reducedFeatVec.extend(featVec[axis+1:])
+            retDataSet.append(reducedFeatVec)
+    return retDataSet
+#计算X_i给定的条件下，Y的条件熵
+def calcConditionalEntropy(dataSet, i, featList, uniqueVals):
+    conditionEnt = 0.0
+    for value in uniqueVals:
+        subDataSet = splitDataSet(dataSet, i, value)
+        prob = len(subDataSet) / float(len(dataSet))  # 极大似然估计概率
+        conditionEnt += prob * calcShannonEnt(subDataSet)  # 条件熵的计算
+    return conditionEnt
+# 计算信息增益
+def calcInformationGain(dataSet, baseEntropy, i):
+    featList = [example[i] for example in dataSet]  # 第i维特征列表
+    uniqueVals = set(featList)  # 转换成集合
+    newEntropy = calcConditionalEntropy(dataSet, i, featList, uniqueVals)
+    infoGain = baseEntropy - newEntropy  # 信息增益，就yes熵的减少，也就yes不确定性的减少
+    return infoGain
+#选择最好的数据集划分方式
+def chooseBestFeatureToSplitByID3(dataSet):
+    numFeatures = len(dataSet[0]) - 1  # 最后一列yes分类标签，不属于特征向量
+    baseEntropy = calcShannonEnt(dataSet)
+    bestInfoGain = 0.0
+    bestFeature = -1
+    for i in range(numFeatures):  # 遍历所有特征
+        infoGain = calcInformationGain(dataSet, baseEntropy, i)     # 计算信息增益
+        if (infoGain > bestInfoGain):  # 选择最大的信息增益
+            bestInfoGain = infoGain
+            bestFeature = i
+    return bestFeature  # 返回最优特征对应的维度
+#采用多数表决的方法决定叶结点的分类
+def majorityCnt(classList):
     classCount={}
-    for n in classList:
-        if n not in classCount.keys():
-            classCount[n]=0
-        classCount[n]+=1
-    #print classCount
-    sortedCC=sorted(classCount.iteritems(),key=lambda x:x[1],reverse=True)
-    majorityLabel=sortedCC[0][0]
-    purity=1.0*sortedCC[0][1]/len(classList)
-    num=len(classList)
-    return [majorityLabel,purity,num]
-
-#calculate entropy
-def calEnt(D):
-    num=len(D)
-    labelCount={}
-    for instance in D:
-        currentLabel=instance[-1]
-        if currentLabel not in labelCount.keys():
-            labelCount[currentLabel]=0
-        labelCount[currentLabel]+=1
-    Ent=0.0
-    for key in labelCount:
-        prob=float(labelCount[key])/num
-        Ent-=prob*math.log(prob,2)
-    return Ent
-
-#通过split_point对数据进行split处理
-def splitPointDataset(D,attribute,value):
-    DY=[]
-    DN=[]
-    for instance in D:
-        if instance[attribute]<=value:
-            DY.append(instance)
-        if instance[attribute]>value:
-            DN.append(instance)
-    return DY,DN
-
-#选择最优的属性
-def chooseBestFeature(dataSet,sigma,pai):
-    classList = [instance[-1] for instance in dataSet]
-    majorityLabel,purity,num=majorityLabel_purity(classList)
-    if len(set(classList))==1:     # 停止条件 1
-        return None,majorityLabel,purity,num               # 返回标签的多数类别作为叶子节点
-    if purity>=pai:               # 停止条件 2   如果所给的数据纯度达到标准，则停止划分
-        return None,majorityLabel,purity,num
-    featnum=len(dataSet[0])-1
-    bestFeature=-1
-    bestGain=0.0
-    bestSplit_point=0.0
-    for i in range(featnum):
-        split_point,Gain = evaluate_numeric_attribute(dataSet,i,sigma)
-        if Gain>bestGain:
-            bestGain=Gain
-            bestFeature=i
-            bestSplit_point=split_point
-    dY, dN = splitPointDataset(dataSet,bestFeature,bestSplit_point)
-    if len(dY) < sigma or len(dN) < sigma:        # 停止条件 3
-        return None,majorityLabel,purity,num
-    return bestFeature,bestSplit_point,bestGain,num
-
-#构造决策树
-def createTree(D,sigma,pai):
-    bestFeature, split_point,purity,num= chooseBestFeature(D,sigma,pai)
-    if bestFeature == None: return {'label':split_point,'purity':purity,'number':num}
-    DY, DN = splitPointDataset(D, bestFeature, split_point)
-    Decision_tree = {}
-    Decision_tree['attribute'] = bestFeature
-    Decision_tree['split_point'] = split_point
-    Decision_tree['Gain']=purity
-    Decision_tree['left'] = createTree(DY, sigma, pai)
-    Decision_tree['right'] = createTree(DN, sigma, pai)
-    #print Decision_tree
-    return Decision_tree
-
-
-data=pd.read_csv('iris.csv')
-data=np.array(data)
-data=data[:,[0,1,4]]
-data[data[:,2]=='Iris-setosa',2]='c1'
-data[data[:,2]=='Iris-versicolor',2]='c2'
-data[data[:,2]=='Iris-virginica',2]='c2'
-#print data
-data=data.tolist()
-myTree = createTree(data,2,0.95)
+    for vote in classList:                  # 统计所有类标签的频数
+        if vote not in classCount.keys():
+            classCount[vote] = 0
+        classCount[vote] += 1
+    sortedClassCount = sorted(classCount.iteritems(), key= operator.itemgetter(1), reverse=True) # 降序排序
+    return sortedClassCount[0][0]
+#创建决策树
+def createTree(dataSet,labels):
+    classList = [example[-1] for example in dataSet]
+    data = Counter(classList)
+    purity=data.most_common(1)[0][1]/len(classList) #计算纯度
+    if purity >= 0.95: 
+        return "type:"+data.most_common(1)[0][0]+" purity:"+str(purity)+" size:"+str(len(dataSet))            # 第一个递归结束条件：纯度高于95%
+    if len(dataSet) <= 5:        
+        return "type:"+data.most_common(1)[0][0]+" purity:"+str(purity)+" size:"+str(len(dataSet))  # 第二个递归结束条件：节点数量小于5
+    bestFeat = chooseBestFeatureToSplitByID3(dataSet)   # 最优划分特征
+    bestFeatLabel = labels[bestFeat]
+    myTree = {bestFeatLabel:{}}         # 使用字典类型储存树的信息
+    del(labels[bestFeat])
+    featValues = [example[bestFeat] for example in dataSet]
+    uniqueVals = set(featValues)        #删除重复数据
+    for value in uniqueVals:            #创建子树
+        subLabels = labels[:]           # 复制所有类标签，保证每次递归调用时不改变原始列表的内容
+        myTree[bestFeatLabel][value] = createTree(splitDataSet(dataSet, bestFeat, value),subLabels)
+    return myTree
+result=[]
+with open('iris.txt','r') as f:  #读取文件
+    for line in f:
+        line=list(map(str,line.split(','))) #逗号分割
+        result.append(list(map(str,line))) #去除字母
+labels = ['attribute1', 'attribute2', 'attribute3', 'attribute4']
+myTree = createTree(result, labels)
 print(myTree)
+out=open('out.txt','w')
+print(myTree,file=out)
+out.close()

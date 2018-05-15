@@ -112,4 +112,3 @@ ids[0]=result2.count(result2[0])
 ids[1]=result2.count(result2[3])
 ids[2]=result2.count(result2[6])
 DENCLUE(D,0.0001,0.03)
-
